@@ -1,0 +1,114 @@
+# Machine Learning Coursera Project Assignment
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. In this project, the goal is to use data from accelerometers for 6 individuals on four locations:
+.the belt   .forearm   .arm    .dumbell 
+They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: 
+http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+The data for this project come from this source: 
+http://groupware.les.inf.puc-rio.br/har. 
+
+## Calling all necessary libraries for the programming 
+```{r}
+library(Hmisc)
+library(caret)
+library(randomForest)
+library(foreach)
+library(doParallel)
+```
+
+## Make sure we are at the working directory for this project
+```{r}
+setwd("~/Desktop/MachineLearningCoursera")
+```
+## Get the data from online sources provided by course project
+
+```{r}
+if(!file.exists("traindata.csv")) {
+  file <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(file, destfile = "traindata.csv", method = "curl")
+}
+
+if(!file.exists("testdata.csv")) {
+  file <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+  download.file(file, destfile = "testdata.csv", method = "curl")
+}
+```
+
+## Cross Validation
+
+Random Forest method has its own internal cross-validation algorithms which protect against overfitting.
+
+
+
+
+Looking the first glance at the data shows that there are a lot of fields as "NA" or " " and some as "#DIV/0!". So to clean teh data, it's advised to get ride of columns with too many blanks or NA or #DIV/0!
+
+## Clean the Data
+
+We replace the " ","DIV/0!", "NA" all to NA
+
+```{r}
+train<- read.csv("traindata.csv", na.strings=c("NA","#DIV/0!",""))
+test<- read.csv("testdata.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+We get ride of columns that have all NAs. To do this we get ride of columns that end up with the sum of 0.
+
+
+```{r}
+train.na.removed <- train[ ,(colSums(is.na(train)) == 0)]
+test.na.removed <- test[ ,(colSums(is.na(test)) == 0)]
+```
+
+We also notice that the first 7 columns are not serving us in modeling and they just slow down the future model fitting.
+
+```{r}
+cleaned.train <- train.na.removed[ , c(7:60)]
+cleaned.test <- test.na.removed[ , c(7:60)]
+```
+
+## Partitioning train data 
+We dedicate %60 of our train data set to model fitting and %40 for testing. Using the cleaned set of data.
+
+```{r}
+idx <- createDataPartition(y=cleaned.train$classe, p=0.60, list=FALSE )
+training.set <- cleaned.train[idx,]
+testing.set <- cleaned.train[-idx,]
+```
+
+## Using parallel processing to speed up random forest model.
+
+```{r}
+registerDoParallel()
+x <- training.set[-ncol(training.set)]
+y <- training.set$classe
+
+rf <- foreach(ntree=rep(150, 6), .combine=randomForest::combine, .packages='randomForest') %dopar% {
+  randomForest(x, y, ntree=ntree) 
+}
+```
+
+## In Sample Accuracy in the training set 
+
+```{r}
+predictions1 <- predict(rf, newdata=training.set)
+confusionMatrix(predictions1,training.set$classe)
+```
+
+We find %100 accuracy on our training set
+
+## Out of Sample Accuracy in testing set of training data
+
+```{r}
+predictions2 <- predict(rf, newdata=testing.set)
+confusionMatrix(predictions2,testing.set$classe)
+```
+
+WooHoo the accuracy is pretty good 0.9985. So this Model is capable of forcasting our future data set.
+
+## Future Prediction for the real test data
+
+```{r}
+predict.the.future <- predict(rf, newdata=cleaned.test)
+predict.the.future
+```
+
